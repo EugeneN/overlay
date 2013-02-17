@@ -24,7 +24,6 @@ DEFAULT =
     closeOnEsc: true
     closeOnMask: true
     closeSel: null
-    loaderCls: null
     showOnLoad: true
     onLoad: undefined
     onClose: undefined
@@ -32,6 +31,7 @@ DEFAULT =
     lazy:
         ev: null
         cb: undefined
+        loaderCls: null
 
 # Objects of the fully finished overlays.
 OVERLAYS = {}
@@ -69,9 +69,34 @@ getMask = (olayId) -> OVERLAYS[olayId].mask
 hideOlay = (id) ->
     olay = jQuery "##{id}"
     olay.css 'display', 'none'
+    mask = getMask id
+    mask.css 'display', 'none'
     olay.trigger EVENT.CLOSED, id
 
-showOlay = (id) -> (jQuery "##{id}").css 'display', 'block'
+showOlay = (id) ->
+    (jQuery "##{id}").css 'display', 'block'
+    mask = getMask id
+    mask.css 'display', 'block'
+
+attachLoader = (id, loaderCls) ->
+    olay = jQuery "##{id}"
+    loader = jQuery '<div>', {'class': loaderCls}
+
+    # create mask element
+    mask = jQuery '<div/>', {'id': 'js-overlay-loader'}
+    mask.css('top', olay.offset().top).css('left', olay.offset().left)
+        .css('width', olay.outerWidth()).css('height', olay.outerHeight())
+        .css('z-index', getMaxZIndex()).css('position', 'absolute').append(loader)
+
+    # Center the loader vertically.
+    loaderHeight = loader.outerHeight()
+    overlayHeight = olay.outerHeight()
+    loaderTop = (overlayHeight - loaderHeight) / 2
+
+    loader.css('position', 'relative').css('top', loaderTop)
+    (jQuery document.body).append mask
+
+removeLoader = (id) -> (jQuery "#js-overlay-loader").remove()
 
 
 methods = (olayId) ->
@@ -115,10 +140,6 @@ methods = (olayId) ->
 
     trigger: (sel) -> (jQuery sel).bind 'click', -> showOlay olayId
 
-    loaderCls: (opts) -> console.log ">>> loaderCls"
-
-    lazy: (opts) -> console.log ">>> lazy"
-
     closeOnEsc: (bool) ->
         unless bool
             return null
@@ -143,8 +164,8 @@ methods = (olayId) ->
     #   is style property, and the value of the object is css value.
     mask: (opts) ->
         mask = jQuery "<div>"
-        wrapper = getWrapper olayId
         zIndex = getMaxZIndex()
+        wrapper = getWrapper olayId
         width = wrapper.outerWidth()
         height = wrapper.outerHeight()
 
@@ -158,8 +179,8 @@ methods = (olayId) ->
         else
             mask.css('background-color', opts).css('opacity', 0.8)
 
-        mask.css('position', 'fixed').css('z-index', zIndex).css('left', 0).css('top', 0)
-            .css('width', width).css('height', height)
+        mask.css('position', 'fixed').css('z-index', zIndex).css('left', 0)
+            .css('top', 0).css('width', width).css('height', height)
 
         storeMask olayId, mask
         wrapper.append mask
@@ -168,8 +189,16 @@ methods = (olayId) ->
         unless bool
             return true
 
-        mask = null
-        # mask.click -> hideOlay olayId
+        mask = getMask olayId
+        opacity = mask.css 'opacity'
+
+        _mouseenter = -> mask.fadeTo(120, 0.95).css('cursor', 'pointer')
+
+        _mouseout = ->
+            mask.fadeTo(180, opacity).css('cursor', 'default') if mask.is ":visible"
+
+        mask.click -> hideOlay olayId
+        mask.hover _mouseenter, _mouseout
 
     closeSel: (sel) -> (jQuery sel).bind 'click', -> hideOlay olayId
 
@@ -182,6 +211,24 @@ methods = (olayId) ->
             .css('z-index', getMaxZIndex() + 1)
             .trigger EVENT.LOADED, olayId
 
+    lazy: ({ev, cb, loaderCls}={opts}) ->
+        unless ev and cb
+            return null
+
+        process_cb = (args...) ->
+            # Remove temporary empty overlay.
+            removeLoader olayId
+            cb olayId, args...
+
+            # At this stage overlay already loaded and we should call
+            # `LOADED` event
+            olay.trigger EVENT.LOADED, olayId
+
+            # Unbind recieved event.
+            olay.unbind event
+
+        attachLoader olayId, loaderCls
+        olay.bind ev, process_cb
 
 # Entry point.
 # jQuery, maintaining chainability.

@@ -1,5 +1,3 @@
-excludeArgs = (fn, num) -> _handler = (args...) -> fn args[num...]...
-
 makeUniqueInt = -> new Date().getTime()
 
 makeUniqueId = -> "id#{makeUniqueInt()}"
@@ -15,6 +13,9 @@ getJNodeId = (jnode) ->
 
 
 EVENT =
+    REMOVE: 'olayRemove'
+    RECTOP: 'olayRecalcTop'
+
     LOADED: 'olayLoaded'
     CLOSED: 'olayClosed'
 
@@ -43,8 +44,8 @@ getMaxZIndex = ->
 
     if maxZIndex > 0 then maxZIndex else 5000
 
-calcTop = (olay) ->
-    height = olay.outerHeight()
+calcTop = (id) ->
+    height = (jQuery "##{id}").outerHeight()
 
     # Gone beyond the lower border.
     if height > screen.availHeight
@@ -66,17 +67,23 @@ storeMask = (olayId, mask) -> OVERLAYS[olayId].mask = mask
 
 getMask = (olayId) -> OVERLAYS[olayId].mask
 
-hideOlay = (id) ->
+removeOlay = (id) ->
     olay = jQuery "##{id}"
-    olay.css 'display', 'none'
-    mask = getMask id
-    mask.css 'display', 'none'
-    olay.trigger EVENT.CLOSED, id
+    wrapper = getWrapper id
+
+    events = (e for k, e of EVENT)
+    events.map (ev) -> olay.unbind ev
+    wrapper.remove()
+    delete OVERLAYS[id]
+
+hideOlay = (id) ->
+    (jQuery document.body).css 'overflow', 'auto'
+    (getWrapper id).hide()
+    (jQuery "##{id}").trigger EVENT.CLOSED, id
 
 showOlay = (id) ->
-    (jQuery "##{id}").css 'display', 'block'
-    mask = getMask id
-    mask.css 'display', 'block'
+    (jQuery document.body).css 'overflow', 'hidden'
+    (getWrapper id).show()
 
 attachLoader = (id, loaderCls) ->
     olay = jQuery "##{id}"
@@ -99,11 +106,13 @@ attachLoader = (id, loaderCls) ->
 removeLoader = (id) -> (jQuery "#js-overlay-loader").remove()
 
 
-methods = (olayId) ->
+impl = (olayId) ->
     body = jQuery document.body
     olay = jQuery "##{olayId}"
+
     olayStyle =
         'position': 'absolute'
+
     wrapperStyle =
         'position': 'fixed'
         'top': 0
@@ -112,8 +121,8 @@ methods = (olayId) ->
         'overflow-x': 'hidden'
         'width': screen.width
 
-    # Order is important.
-    _makeWrapper: ->
+
+    _makeWrapper = ->
         body.css 'overflow', 'hidden'
         wrapper = (jQuery "<div>").appendTo(body).append(olay)
 
@@ -123,24 +132,24 @@ methods = (olayId) ->
             screen.availHeight
 
         wrapper.css prop, val for prop, val of wrapperStyle
-        wrapper.css 'height', wrapperHeight
+        wrapper.css('height', wrapperHeight).css('z-index', getMaxZIndex())
         storeWrapper olayId, wrapper
 
-    onLoad: (fn) ->
+    onLoad = (fn) ->
         unless jQuery.isFunction fn
             return null
 
-        olay.bind EVENT.LOADED, (excludeArgs fn, 1)
+        olay.bind EVENT.LOADED, (_, id) -> fn id
 
-    onClose: (fn) ->
+    onClose = (fn) ->
         unless jQuery.isFunction fn
             return null
 
-        olay.bind EVENT.CLOSED, (excludeArgs fn, 1)
+        olay.bind EVENT.CLOSED, (_, id) -> fn id
 
-    trigger: (sel) -> (jQuery sel).bind 'click', -> showOlay olayId
+    trigger = (sel) -> (jQuery sel).bind 'click', -> showOlay olayId
 
-    closeOnEsc: (bool) ->
+    closeOnEsc = (bool) ->
         unless bool
             return null
 
@@ -154,7 +163,7 @@ methods = (olayId) ->
 
         body.bind 'keyup', _handleKeyUp
 
-    showOnLoad: (bool) ->
+    showOnLoad = (bool) ->
         fn = if bool then showOlay else hideOlay
         olay.bind EVENT.LOADED, -> fn olayId
 
@@ -162,7 +171,8 @@ methods = (olayId) ->
     #   if the mask is a value, it is assumed that the value is a background-color
     #   css style otherwise, if the mask is an object, then the object key
     #   is style property, and the value of the object is css value.
-    mask: (opts) ->
+    mask = (opts) ->
+        return true unless opts
         mask = jQuery "<div>"
         zIndex = getMaxZIndex()
         wrapper = getWrapper olayId
@@ -185,11 +195,10 @@ methods = (olayId) ->
         storeMask olayId, mask
         wrapper.append mask
 
-    closeOnMask: (bool) ->
-        unless bool
-            return true
-
+    closeOnMask = (bool) ->
         mask = getMask olayId
+        return true unless bool and mask
+
         opacity = mask.css 'opacity'
 
         _mouseenter = -> mask.fadeTo(120, 0.95).css('cursor', 'pointer')
@@ -200,35 +209,42 @@ methods = (olayId) ->
         mask.click -> hideOlay olayId
         mask.hover _mouseenter, _mouseout
 
-    closeSel: (sel) -> (jQuery sel).bind 'click', -> hideOlay olayId
+    closeSel = (sel) -> olay.on 'click', sel, -> hideOlay olayId
 
-    top: (val) -> olayStyle.top = val or calcTop olay
+    top = (val) -> olayStyle.top = val or calcTop olayId
 
-    _afterLoad: ->
+    _afterLoad = ->
         olay.css prop, val for prop, val of olayStyle
 
         olay.css('left', (screen.width - olay.outerWidth()) / 2)
             .css('z-index', getMaxZIndex() + 1)
-            .trigger EVENT.LOADED, olayId
+            .trigger(EVENT.LOADED, olayId)
+            .bind(EVENT.REMOVE, (_, id) -> removeOlay id)
 
-    lazy: ({ev, cb, loaderCls}={opts}) ->
-        unless ev and cb
-            return null
+    lazy = ({ev, cb, loaderCls}={opts}) ->
+        return true unless ev and cb
 
-        process_cb = (args...) ->
+        process_cb = (ev, args...) ->
             # Remove temporary empty overlay.
             removeLoader olayId
             cb olayId, args...
+
+            olay.css 'top', calcTop olayId
 
             # At this stage overlay already loaded and we should call
             # `LOADED` event
             olay.trigger EVENT.LOADED, olayId
 
             # Unbind recieved event.
-            olay.unbind event
+            olay.unbind ev
 
         attachLoader olayId, loaderCls
         olay.bind ev, process_cb
+
+    # Order is important.
+    {_makeWrapper, onLoad, onClose, trigger, closeOnEsc, showOnLoad, mask,
+    closeOnMask, closeSel, top, _afterLoad, lazy}
+
 
 # Entry point.
 # jQuery, maintaining chainability.
@@ -244,6 +260,6 @@ overlay = (opts) ->
 
         storeOlayId jnodeId, opts
         # Execute methods with the received options.
-        (fn opts[name]) for name, fn of (methods jnodeId)
+        (fn opts[name]) for name, fn of (impl jnodeId)
 
 jQuery.fn.overlay = overlay

@@ -29,6 +29,7 @@ DEFAULT =
     onLoad: undefined
     onClose: undefined
     triggerSel: null
+    removeOnClose: false
     lazy:
         ev: null
         cb: undefined
@@ -69,10 +70,11 @@ getMask = (olayId) -> OVERLAYS[olayId].mask
 
 removeOlay = (id) ->
     olay = jQuery "##{id}"
-    wrapper = getWrapper id
 
     events = (e for k, e of EVENT)
     events.map (ev) -> olay.unbind ev
+
+    wrapper = getWrapper id
     wrapper.remove()
     delete OVERLAYS[id]
 
@@ -214,6 +216,8 @@ impl = (olayId) ->
 
     top = (val) -> olayStyle.top = val or calcTop olayId
 
+    removeOnClose = (bool) -> (olay.bind EVENT.CLOSED, -> removeOlay olayId) if bool
+
     _afterLoad = ->
         olay.css prop, val for prop, val of olayStyle
 
@@ -244,7 +248,7 @@ impl = (olayId) ->
 
     # Order is important.
     {_makeWrapper, onLoad, onClose, trigger, closeOnEsc, showOnLoad, mask,
-    closeOnMask, closeSel, top, _afterLoad, lazy}
+    closeOnMask, closeSel, top, removeOnClose, _afterLoad, lazy}
 
 
 # Entry point.

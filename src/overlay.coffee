@@ -47,14 +47,15 @@ getMaxZIndex = ->
 
 calcTop = (id) ->
     height = (jQuery "##{id}").outerHeight()
+    vpHeight = (jQuery window).height()
 
     # Gone beyond the lower border.
-    if height > screen.availHeight
+    if height > vpHeight - 20 # beauty number
         10 # min top param
 
     # Centered in the visible.
     else
-        (screen.availHeight - height) / 2
+        (vpHeight - height) / 2
 
 storeOlayId = (id, opts) -> OVERLAYS[id] = opts
 
@@ -67,6 +68,25 @@ getWrapper = (olayId) -> OVERLAYS[olayId].wrapper
 storeMask = (olayId, mask) -> OVERLAYS[olayId].mask = mask
 
 getMask = (olayId) -> OVERLAYS[olayId].mask
+
+totalRecalc = ->
+    vpHeight = (jQuery window).height()
+    vpWidth = (jQuery window).width()
+
+    ids = (i for i, _ of OVERLAYS)
+    # Recalculate top params.
+    ids.map (id) ->
+        olay = jQuery "##{id}"
+        top = OVERLAYS[id].top or calcTop id
+        left = (vpWidth - olay.outerWidth()) / 2
+        olay.css('top', top).css('left', left)
+
+    # Recalculate wrapper and mask size.
+    wps = ((getWrapper i) for i, _ of OVERLAYS)
+    wps.map (wp) -> wp.css('height', vpHeight).css('width', vpWidth)
+
+    masks = ((getMask i) for i, _ of OVERLAYS)
+    masks.map (msk) -> msk.css('height', vpHeight).css('width', vpWidth)
 
 removeOlay = (id) ->
     olay = jQuery "##{id}"
@@ -111,7 +131,6 @@ removeLoader = (id) -> (jQuery "#js-overlay-loader").remove()
 impl = (olayId) ->
     body = jQuery document.body
     olay = jQuery "##{olayId}"
-    innerWidth = body.innerWidth()
 
     olayStyle =
         'position': 'absolute'
@@ -122,20 +141,14 @@ impl = (olayId) ->
         'left': 0
         'overflow-y': 'auto'
         'overflow-x': 'hidden'
-        'width': screen.width
+        'z-index': getMaxZIndex()
 
 
     _makeWrapper = ->
         body.css 'overflow', 'hidden'
         wrapper = (jQuery "<div>").appendTo(body).append(olay)
 
-        wrapperHeight = if olay.outerHeight() > screen.availHeight
-            olay.outerHeight()
-        else
-            screen.availHeight
-
         wrapper.css prop, val for prop, val of wrapperStyle
-        wrapper.css('height', wrapperHeight).css('z-index', getMaxZIndex())
         storeWrapper olayId, wrapper
 
     onLoad = (fn) ->
@@ -176,11 +189,7 @@ impl = (olayId) ->
     #   is style property, and the value of the object is css value.
     mask = (opts) ->
         return true unless opts
-        mask = jQuery "<div>"
-        zIndex = getMaxZIndex()
-        wrapper = getWrapper olayId
-        width = innerWidth
-        height = wrapper.outerHeight()
+        mask = jQuery "<div style='position: fixed; left: 0; top: 0;'></div>"
 
         if jQuery.isPlainObject opts
             for style, value of opts
@@ -192,11 +201,10 @@ impl = (olayId) ->
         else
             mask.css('background-color', opts).css('opacity', 0.8)
 
-        mask.css('position', 'fixed').css('z-index', zIndex).css('left', 0)
-            .css('top', 0).css('width', width).css('height', height)
+        mask.css 'z-index', getMaxZIndex()
 
         storeMask olayId, mask
-        wrapper.append mask
+        (getWrapper olayId).append mask
 
     closeOnMask = (bool) ->
         mask = getMask olayId
@@ -214,17 +222,16 @@ impl = (olayId) ->
 
     closeSel = (sel) -> olay.on 'click', sel, -> hideOlay olayId
 
-    top = (val) -> olayStyle.top = val or calcTop olayId
-
     removeOnClose = (bool) -> (olay.bind EVENT.CLOSED, -> removeOlay olayId) if bool
 
     _afterLoad = ->
         olay.css prop, val for prop, val of olayStyle
 
-        olay.css('left', (screen.width - olay.outerWidth()) / 2)
-            .css('z-index', getMaxZIndex() + 1)
+        olay.css('z-index', getMaxZIndex() + 1)
             .trigger(EVENT.LOADED, olayId)
             .bind(EVENT.REMOVE, (_, id) -> removeOlay id)
+
+        totalRecalc()
 
     lazy = ({ev, cb, loaderCls}={opts}) ->
         return true unless ev and cb
@@ -234,21 +241,20 @@ impl = (olayId) ->
             removeLoader olayId
             cb olayId, args...
 
-            olay.css 'top', calcTop olayId
-
             # At this stage overlay already loaded and we should call
             # `LOADED` event
             olay.trigger EVENT.LOADED, olayId
 
             # Unbind recieved event.
             olay.unbind ev
+            totalRecalc()
 
         attachLoader olayId, loaderCls
         olay.bind ev, process_cb
 
     # Order is important.
     {_makeWrapper, onLoad, onClose, trigger, closeOnEsc, showOnLoad, mask,
-    closeOnMask, closeSel, top, removeOnClose, _afterLoad, lazy}
+    closeOnMask, closeSel, removeOnClose, _afterLoad, lazy}
 
 
 # Entry point.
@@ -268,3 +274,5 @@ overlay = (opts) ->
         (fn opts[name]) for name, fn of (impl jnodeId)
 
 jQuery.fn.overlay = overlay
+
+(jQuery window).bind 'resize', -> totalRecalc()

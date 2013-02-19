@@ -40,10 +40,10 @@ OVERLAYS = {}
 
 
 getMaxZIndex = ->
-    zIndexes = (o.zIndex for i, o of OVERLAYS)
-    maxZIndex = Math.max zIndexes...
+    zIndexes = (o.zIndex or 5000 for i, o of OVERLAYS)
+    Math.max zIndexes...
 
-    if maxZIndex > 0 then maxZIndex else 5000
+storeZIndex = (id, idx) -> OVERLAYS[id].zIndex = idx
 
 calcTop = (id) ->
     height = (jQuery "##{id}").outerHeight()
@@ -175,6 +175,7 @@ impl = (olayId) ->
 
             # Hide top overlay.
             ids = (i for i, o of OVERLAYS)
+            console.log ">>> ", ids.reverse(), ids.length - 1
             hideOlay ids.reverse()[ids.length - 1]
 
         body.bind 'keyup', _handleKeyUp
@@ -226,8 +227,9 @@ impl = (olayId) ->
 
     _afterLoad = ->
         olay.css prop, val for prop, val of olayStyle
+        zIndex = storeZIndex olayId, getMaxZIndex() + 1
 
-        olay.css('z-index', getMaxZIndex() + 1)
+        olay.css('z-index', zIndex)
             .trigger(EVENT.LOADED, olayId)
             .bind(EVENT.REMOVE, (_, id) -> removeOlay id)
 
@@ -238,7 +240,7 @@ impl = (olayId) ->
 
         process_cb = (ev, args...) ->
             # Remove temporary empty overlay.
-            removeLoader olayId
+            removeLoader()
             cb olayId, args...
 
             # At this stage overlay already loaded and we should call
@@ -260,7 +262,7 @@ impl = (olayId) ->
 # Entry point.
 # jQuery, maintaining chainability.
 overlay = (opts) ->
-    opts = jQuery.extend DEFAULT, opts
+    opts = jQuery.extend {}, DEFAULT, opts
 
     @.each (idx, el) ->
         jnode = jQuery el

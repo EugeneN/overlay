@@ -109,6 +109,7 @@ removeLoader = (id) -> (jQuery "#js-overlay-loader").remove()
 impl = (olayId) ->
     body = jQuery document.body
     olay = jQuery "##{olayId}"
+    innerWidth = body.innerWidth()
 
     olayStyle =
         'position': 'absolute'
@@ -176,7 +177,7 @@ impl = (olayId) ->
         mask = jQuery "<div>"
         zIndex = getMaxZIndex()
         wrapper = getWrapper olayId
-        width = wrapper.outerWidth()
+        width = innerWidth
         height = wrapper.outerHeight()
 
         if jQuery.isPlainObject opts

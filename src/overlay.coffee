@@ -15,8 +15,6 @@ getJNodeId = (jnode) ->
 EVENT =
     REMOVE:    'olayRemove'
     RECTOP:    'olayRecalcTop'
-    ATTACHLDR: 'olayAttachLoader'
-    REMOVELDR: 'olayRemoveLoader'
 
     LOADED:    'olayLoaded'
     CLOSED:    'olayClosed'
@@ -32,10 +30,11 @@ DEFAULT =
     onClose: undefined
     triggerSel: null
     removeOnClose: false
+    invokeLoader: []
+    loaderCls: null
     lazy:
         ev: null
         cb: undefined
-        loaderCls: null
 
 # Objects of the fully finished overlays.
 OVERLAYS = {}
@@ -78,24 +77,24 @@ totalRecalc = ->
     vpHeight = window.innerHeight
     vpWidth = window.innerWidth
 
-    ids = (i for i, _ of OVERLAYS)
-    # Recalculate top params.
-    ids.map (id) ->
-        olay = jQuery "##{id}"
-        top = OVERLAYS[id].top or calcTop id
-        left = (vpWidth - olay.outerWidth()) / 2
-        olay.css('top', top).css('left', left)
-
     # Recalculate wrapper and mask size.
-    wps = ((getWrapper i) for i, _ of OVERLAYS)
+    wps = ((getWrapper i) for i of OVERLAYS)
     wps.map (wp) -> wp.css('height', vpHeight).css('width', vpWidth)
 
     # Optimization. All wrappers has the same width and height, so we can take
     #   on any wrapper and extract his inner width.
     iw = wps[0][0].scrollWidth if wps[0]
 
-    masks = ((getMask i) for i, _ of OVERLAYS)
+    masks = ((getMask i) for i of OVERLAYS)
     masks.map (msk) -> msk.css('height', vpHeight).css('width', iw)
+
+    ids = (i for i of OVERLAYS)
+    # Recalculate top params.
+    ids.map (id) ->
+        olay = jQuery "##{id}"
+        top = OVERLAYS[id].top or calcTop id
+        left = (vpWidth - olay.outerWidth()) / 2
+        olay.css('top', top).css('left', left)
 
 removeOlay = (id) ->
     olay = jQuery "##{id}"
@@ -117,9 +116,9 @@ showOlay = (id) ->
     BODY.css 'overflow', 'hidden'
     (getWrapper id).show()
 
-attachLoader = (id, loaderCls) ->
+attachLoader = (id) ->
     olay = jQuery "##{id}"
-    loader = jQuery '<div>', {'class': loaderCls}
+    loader = jQuery '<div>', {'class': OVERLAYS[id].loaderCls}
 
     # create mask element
     mask = jQuery '<div/>', {'id': 'js-overlay-loader'}
@@ -154,25 +153,25 @@ impl = (olayId) ->
 
 
     _makeWrapper = ->
-        BODY.css 'overflow', 'hidden'
         wrapper = (jQuery "<div>").appendTo(BODY).append(olay)
 
         wrapper.css prop, val for prop, val of wrapperStyle
         storeWrapper olayId, wrapper
 
     onLoad = (fn) ->
+        olay.on EVENT.LOADED, -> totalRecalc()
         unless jQuery.isFunction fn
             return null
 
-        olay.bind EVENT.LOADED, (_, id) -> fn id
+        olay.on EVENT.LOADED, (_, id) -> fn id
 
     onClose = (fn) ->
         unless jQuery.isFunction fn
             return null
 
-        olay.bind EVENT.CLOSED, (_, id) -> fn id
+        olay.on EVENT.CLOSED, (_, id) -> fn id
 
-    trigger = (sel) -> (jQuery sel).bind 'click', -> showOlay olayId
+    trigger = (sel) -> (jQuery sel).on 'click', -> showOlay olayId
 
     closeOnEsc = (bool) ->
         unless bool
@@ -186,11 +185,11 @@ impl = (olayId) ->
             ids = (i for i, o of OVERLAYS)
             hideOlay ids.reverse()[_COUNT - 1] if _COUNT > 0
 
-        BODY.bind 'keyup', _handleKeyUp
+        BODY.on 'keyup', _handleKeyUp
 
     showOnLoad = (bool) ->
         fn = if bool then showOlay else hideOlay
-        olay.bind EVENT.LOADED, -> fn olayId
+        olay.on EVENT.LOADED, -> fn olayId
 
     # Mask can be either an object or a parameter
     #   if the mask is a value, it is assumed that the value is a background-color
@@ -231,7 +230,7 @@ impl = (olayId) ->
 
     closeSel = (sel) -> olay.on 'click', sel, -> hideOlay olayId
 
-    removeOnClose = (bool) -> (olay.bind EVENT.CLOSED, -> removeOlay olayId) if bool
+    removeOnClose = (bool) -> (olay.on EVENT.CLOSED, -> removeOlay olayId) if bool
 
     _afterLoad = ->
         olay.css prop, val for prop, val of olayStyle
@@ -239,14 +238,11 @@ impl = (olayId) ->
 
         olay.css('z-index', zIndex)
             .trigger(EVENT.LOADED, olayId)
-            .bind(EVENT.REMOVE, -> removeOlay olayId)
-            .bind(EVENT.ATTACHLDR, -> console.log ">>> attach loader", olayId)
-            .bind(EVENT.REMOVELDR, -> console.log ">>> remove loader", olayId)
+            .on(EVENT.REMOVE, -> removeOlay olayId)
 
-        totalRecalc()
         _COUNT += 1
 
-    lazy = ({ev, cb, loaderCls}={opts}) ->
+    lazy = ({ev, cb}={opts}) ->
         return true unless ev and cb
 
         process_cb = (ev, args...) ->
@@ -259,14 +255,17 @@ impl = (olayId) ->
 
             # Unbind recieved event.
             olay.unbind ev
-            totalRecalc()
 
-        attachLoader olayId, loaderCls
-        olay.bind ev, process_cb
+        attachLoader olayId
+        olay.on ev, process_cb
+
+    invokeLoader = (sequences) ->
+        sequences.map (sq) ->
+            sq.map (fn) -> console.log fn
 
     # Order is important.
     {_makeWrapper, onLoad, onClose, trigger, closeOnEsc, showOnLoad, mask,
-    closeOnMask, closeSel, removeOnClose, _afterLoad, lazy}
+    closeOnMask, closeSel, removeOnClose, _afterLoad, lazy, invokeLoader}
 
 
 # Entry point.
@@ -287,4 +286,4 @@ overlay = (opts) ->
 
 jQuery.fn.overlay = overlay
 
-(jQuery window).bind 'resize', -> totalRecalc()
+(jQuery window).on 'resize', -> totalRecalc()

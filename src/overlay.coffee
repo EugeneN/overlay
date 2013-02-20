@@ -13,11 +13,13 @@ getJNodeId = (jnode) ->
 
 
 EVENT =
-    REMOVE: 'olayRemove'
-    RECTOP: 'olayRecalcTop'
+    REMOVE:    'olayRemove'
+    RECTOP:    'olayRecalcTop'
+    ATTACHLDR: 'olayAttachLoader'
+    REMOVELDR: 'olayRemoveLoader'
 
-    LOADED: 'olayLoaded'
-    CLOSED: 'olayClosed'
+    LOADED:    'olayLoaded'
+    CLOSED:    'olayClosed'
 
 DEFAULT =
     mask: null
@@ -37,6 +39,9 @@ DEFAULT =
 
 # Objects of the fully finished overlays.
 OVERLAYS = {}
+BODY = jQuery document.body
+# Global state :( to optimize the speed.
+_COUNT = 0
 
 
 getMaxZIndex = ->
@@ -47,7 +52,7 @@ storeZIndex = (id, idx) -> OVERLAYS[id].zIndex = idx
 
 calcTop = (id) ->
     height = (jQuery "##{id}").outerHeight()
-    vpHeight = (jQuery window).height()
+    vpHeight = window.innerHeight
 
     # Gone beyond the lower border.
     if height > vpHeight - 20 # beauty number
@@ -70,8 +75,8 @@ storeMask = (olayId, mask) -> OVERLAYS[olayId].mask = mask
 getMask = (olayId) -> OVERLAYS[olayId].mask
 
 totalRecalc = ->
-    vpHeight = (jQuery window).height()
-    vpWidth = (jQuery window).width()
+    vpHeight = window.innerHeight
+    vpWidth = window.innerWidth
 
     ids = (i for i, _ of OVERLAYS)
     # Recalculate top params.
@@ -85,8 +90,12 @@ totalRecalc = ->
     wps = ((getWrapper i) for i, _ of OVERLAYS)
     wps.map (wp) -> wp.css('height', vpHeight).css('width', vpWidth)
 
+    # Optimization. All wrappers has the same width and height, so we can take
+    #   on any wrapper and extract his inner width.
+    iw = wps[0][0].scrollWidth if wps[0]
+
     masks = ((getMask i) for i, _ of OVERLAYS)
-    masks.map (msk) -> msk.css('height', vpHeight).css('width', vpWidth)
+    masks.map (msk) -> msk.css('height', vpHeight).css('width', iw)
 
 removeOlay = (id) ->
     olay = jQuery "##{id}"
@@ -94,17 +103,18 @@ removeOlay = (id) ->
     events = (e for k, e of EVENT)
     events.map (ev) -> olay.unbind ev
 
-    wrapper = getWrapper id
-    wrapper.remove()
+    (getWrapper id).remove()
+    _COUNT -= 1
     delete OVERLAYS[id]
 
 hideOlay = (id) ->
-    (jQuery document.body).css 'overflow', 'auto'
+    (BODY.css 'overflow', 'auto') if _COUNT is 1
     (getWrapper id).hide()
+    removeLoader()
     (jQuery "##{id}").trigger EVENT.CLOSED, id
 
 showOlay = (id) ->
-    (jQuery document.body).css 'overflow', 'hidden'
+    BODY.css 'overflow', 'hidden'
     (getWrapper id).show()
 
 attachLoader = (id, loaderCls) ->
@@ -115,21 +125,20 @@ attachLoader = (id, loaderCls) ->
     mask = jQuery '<div/>', {'id': 'js-overlay-loader'}
     mask.css('top', olay.offset().top).css('left', olay.offset().left)
         .css('width', olay.outerWidth()).css('height', olay.outerHeight())
-        .css('z-index', getMaxZIndex()).css('position', 'absolute').append(loader)
+        .css('z-index', getMaxZIndex()).css('position', 'fixed').append(loader)
 
     # Center the loader vertically.
-    loaderHeight = loader.outerHeight()
     overlayHeight = olay.outerHeight()
+    loaderHeight = loader.outerHeight() or overlayHeight # default at top
     loaderTop = (overlayHeight - loaderHeight) / 2
 
     loader.css('position', 'relative').css('top', loaderTop)
-    (jQuery document.body).append mask
+    BODY.append mask
 
-removeLoader = (id) -> (jQuery "#js-overlay-loader").remove()
+removeLoader = -> (jQuery "#js-overlay-loader").remove()
 
 
 impl = (olayId) ->
-    body = jQuery document.body
     olay = jQuery "##{olayId}"
 
     olayStyle =
@@ -145,8 +154,8 @@ impl = (olayId) ->
 
 
     _makeWrapper = ->
-        body.css 'overflow', 'hidden'
-        wrapper = (jQuery "<div>").appendTo(body).append(olay)
+        BODY.css 'overflow', 'hidden'
+        wrapper = (jQuery "<div>").appendTo(BODY).append(olay)
 
         wrapper.css prop, val for prop, val of wrapperStyle
         storeWrapper olayId, wrapper
@@ -175,10 +184,9 @@ impl = (olayId) ->
 
             # Hide top overlay.
             ids = (i for i, o of OVERLAYS)
-            console.log ">>> ", ids.reverse(), ids.length - 1
-            hideOlay ids.reverse()[ids.length - 1]
+            hideOlay ids.reverse()[_COUNT - 1] if _COUNT > 0
 
-        body.bind 'keyup', _handleKeyUp
+        BODY.bind 'keyup', _handleKeyUp
 
     showOnLoad = (bool) ->
         fn = if bool then showOlay else hideOlay
@@ -231,15 +239,17 @@ impl = (olayId) ->
 
         olay.css('z-index', zIndex)
             .trigger(EVENT.LOADED, olayId)
-            .bind(EVENT.REMOVE, (_, id) -> removeOlay id)
+            .bind(EVENT.REMOVE, -> removeOlay olayId)
+            .bind(EVENT.ATTACHLDR, -> console.log ">>> attach loader", olayId)
+            .bind(EVENT.REMOVELDR, -> console.log ">>> remove loader", olayId)
 
         totalRecalc()
+        _COUNT += 1
 
     lazy = ({ev, cb, loaderCls}={opts}) ->
         return true unless ev and cb
 
         process_cb = (ev, args...) ->
-            # Remove temporary empty overlay.
             removeLoader()
             cb olayId, args...
 

@@ -30,11 +30,10 @@ DEFAULT =
     onClose: undefined
     triggerSel: null
     removeOnClose: false
-    invokeLoader: []
-    loaderCls: null
     lazy:
         ev: null
         cb: undefined
+        loaderCls: null
 
 # Objects of the fully finished overlays.
 OVERLAYS = {}
@@ -116,9 +115,9 @@ showOlay = (id) ->
     BODY.css 'overflow', 'hidden'
     (getWrapper id).show()
 
-attachLoader = (id) ->
+attachLoader = (id, loaderCls) ->
     olay = jQuery "##{id}"
-    loader = jQuery '<div>', {'class': OVERLAYS[id].loaderCls}
+    loader = jQuery '<div>', {'class': loaderCls}
 
     # create mask element
     mask = jQuery '<div/>', {'id': 'js-overlay-loader'}
@@ -172,20 +171,6 @@ impl = (olayId) ->
         olay.on EVENT.CLOSED, (_, id) -> fn id
 
     trigger = (sel) -> (jQuery sel).on 'click', -> showOlay olayId
-
-    closeOnEsc = (bool) ->
-        unless bool
-            return null
-
-        _handleKeyUp = (ev) ->
-            unless ev.which is 27 # key escape
-                return null
-
-            # Hide top overlay.
-            ids = (i for i, o of OVERLAYS)
-            hideOlay ids.reverse()[_COUNT - 1] if _COUNT > 0
-
-        BODY.on 'keyup', _handleKeyUp
 
     showOnLoad = (bool) ->
         fn = if bool then showOlay else hideOlay
@@ -242,7 +227,7 @@ impl = (olayId) ->
 
         _COUNT += 1
 
-    lazy = ({ev, cb}={opts}) ->
+    lazy = ({ev, cb, loaderCls}={opts}) ->
         return true unless ev and cb
 
         process_cb = (ev, args...) ->
@@ -252,20 +237,17 @@ impl = (olayId) ->
             # At this stage overlay already loaded and we should call
             # `LOADED` event
             olay.trigger EVENT.LOADED, olayId
+            totalRecalc()
 
             # Unbind recieved event.
             olay.unbind ev
 
-        attachLoader olayId
+        attachLoader olayId, loaderCls
         olay.on ev, process_cb
 
-    invokeLoader = (sequences) ->
-        sequences.map (sq) ->
-            sq.map (fn) -> console.log fn
-
     # Order is important.
-    {_makeWrapper, onLoad, onClose, trigger, closeOnEsc, showOnLoad, mask,
-    closeOnMask, closeSel, removeOnClose, _afterLoad, lazy, invokeLoader}
+    {_makeWrapper, onLoad, onClose, trigger, showOnLoad, mask,
+    closeOnMask, closeSel, removeOnClose, _afterLoad, lazy}
 
 
 # Entry point.
@@ -287,3 +269,12 @@ overlay = (opts) ->
 jQuery.fn.overlay = overlay
 
 (jQuery window).on 'resize', -> totalRecalc()
+
+_handleKeyUp = (ev) ->
+    return null unless ev.which is 27 # key escape
+
+    # Hide top overlay.
+    ids = (i for i, o of OVERLAYS when o.closeOnEsc is true)
+    hideOlay ids[ids.length - 1] if _COUNT > 0
+
+BODY.on 'keyup', _handleKeyUp

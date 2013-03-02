@@ -137,27 +137,25 @@ removeLoader = -> (jQuery "#js-overlay-loader").remove()
 
 
 impl = (olayId) ->
-    olay = jQuery "##{olayId}"
-
-    olayStyle =
-        'position': 'absolute'
-
-    wrapperStyle =
-        'position': 'fixed'
-        'top': 0
-        'left': 0
-        'overflow-y': 'auto'
-        'overflow-x': 'hidden'
-        'z-index': getMaxZIndex()
-
 
     _makeWrapper = ->
-        wrapper = (jQuery "<div>").appendTo(BODY).append(olay)
+        olay = (jQuery "##{olayId}").remove().clone()
+        wrapper = (jQuery "<div>").append olay
+        BODY.append wrapper
+
+        wrapperStyle =
+            'position': 'fixed'
+            'top': 0
+            'left': 0
+            'overflow-y': 'auto'
+            'overflow-x': 'hidden'
+            'z-index': getMaxZIndex()
 
         wrapper.css prop, val for prop, val of wrapperStyle
         storeWrapper olayId, wrapper
 
     onLoad = (fn) ->
+        olay = jQuery "##{olayId}"
         olay.on EVENT.LOADED, -> totalRecalc()
         unless jQuery.isFunction fn
             return null
@@ -168,13 +166,13 @@ impl = (olayId) ->
         unless jQuery.isFunction fn
             return null
 
-        olay.on EVENT.CLOSED, (_, id) -> fn id
+        (jQuery "##{olayId}").on EVENT.CLOSED, (_, id) -> fn id
 
     trigger = (sel) -> (jQuery sel).on 'click', -> showOlay olayId
 
     showOnLoad = (bool) ->
         fn = if bool then showOlay else hideOlay
-        olay.on EVENT.LOADED, -> fn olayId
+        (jQuery "##{olayId}").on EVENT.LOADED, -> fn olayId
 
     # Mask can be either an object or a parameter
     #   if the mask is a value, it is assumed that the value is a background-color
@@ -213,12 +211,13 @@ impl = (olayId) ->
         mask.click -> hideOlay olayId
         mask.hover _mouseenter, _mouseout
 
-    closeSel = (sel) -> (olay.on 'click', sel, -> hideOlay olayId) if sel
+    closeSel = (sel) -> ((jQuery "##{olayId}").on 'click', sel, -> hideOlay olayId) if sel
 
-    removeOnClose = (bool) -> (olay.on EVENT.CLOSED, -> removeOlay olayId) if bool
+    removeOnClose = (bool) -> ((jQuery "##{olayId}").on EVENT.CLOSED, -> removeOlay olayId) if bool
 
     _afterLoad = ->
-        olay.css prop, val for prop, val of olayStyle
+        olay = jQuery "##{olayId}"
+        olay.css prop, val for prop, val of {'position': 'absolute'}
         zIndex = storeZIndex olayId, getMaxZIndex() + 1
 
         olay.css('z-index', zIndex)
@@ -229,6 +228,7 @@ impl = (olayId) ->
 
     lazy = ({ev, cb, loaderCls}={opts}) ->
         return true unless ev and cb
+        olay = jQuery "##{olayId}"
 
         process_cb = (ev, args...) ->
             removeLoader()

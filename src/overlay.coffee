@@ -38,7 +38,7 @@ DEFAULT =
 # Objects of the fully finished overlays.
 OVERLAYS = {}
 BODY = jQuery document.body
-# Global state :( to optimize the speed.
+# Global state :( performance optimization.
 _COUNT = 0
 
 
@@ -203,12 +203,12 @@ impl = (olayId) ->
         mask = getMask olayId
         return true unless bool and mask
 
-        opacity = mask.css 'opacity'
+        opacity = parseFloat (mask.css 'opacity'), 10
 
-        _mouseenter = -> mask.fadeTo(120, 0.95).css('cursor', 'pointer')
+        _mouseenter = -> mask.fadeTo(100, opacity + 0.1).css('cursor', 'pointer')
 
         _mouseout = ->
-            mask.fadeTo(180, opacity).css('cursor', 'default') if mask.is ":visible"
+            mask.fadeTo(160, opacity).css('cursor', 'default') if mask.is ":visible"
 
         mask.click -> hideOlay olayId
         mask.hover _mouseenter, _mouseout

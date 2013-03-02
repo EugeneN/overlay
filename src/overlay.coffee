@@ -213,7 +213,7 @@ impl = (olayId) ->
         mask.click -> hideOlay olayId
         mask.hover _mouseenter, _mouseout
 
-    closeSel = (sel) -> olay.on 'click', sel, -> hideOlay olayId
+    closeSel = (sel) -> (olay.on 'click', sel, -> hideOlay olayId) if sel
 
     removeOnClose = (bool) -> (olay.on EVENT.CLOSED, -> removeOlay olayId) if bool
 

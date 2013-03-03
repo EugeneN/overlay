@@ -13,6 +13,7 @@ getJNodeId = (jnode) ->
 
 
 EVENT =
+    HIDE:      'olayHide'
     REMOVE:    'olayRemove'
     RECTOP:    'olayRecalcTop'
 
@@ -137,10 +138,12 @@ removeLoader = -> (jQuery "#js-overlay-loader").remove()
 
 
 impl = (olayId) ->
+    @olay = null
+
 
     _makeWrapper = ->
-        olay = (jQuery "##{olayId}").remove().clone()
-        wrapper = (jQuery "<div>").append olay
+        @olay = (jQuery "##{olayId}").remove().clone()
+        wrapper = (jQuery "<div>").append @olay
         BODY.append wrapper
 
         wrapperStyle =
@@ -155,24 +158,23 @@ impl = (olayId) ->
         storeWrapper olayId, wrapper
 
     onLoad = (fn) ->
-        olay = jQuery "##{olayId}"
-        olay.on EVENT.LOADED, -> totalRecalc()
+        @olay.on EVENT.LOADED, -> totalRecalc()
         unless jQuery.isFunction fn
             return null
 
-        olay.on EVENT.LOADED, (_, id) -> fn id
+        @olay.on EVENT.LOADED, (_, id) -> fn id
 
     onClose = (fn) ->
         unless jQuery.isFunction fn
             return null
 
-        (jQuery "##{olayId}").on EVENT.CLOSED, (_, id) -> fn id
+        @olay.on EVENT.CLOSED, (_, id) -> fn id
 
     trigger = (sel) -> (jQuery sel).on 'click', -> showOlay olayId
 
     showOnLoad = (bool) ->
         fn = if bool then showOlay else hideOlay
-        (jQuery "##{olayId}").on EVENT.LOADED, -> fn olayId
+        @olay.on EVENT.LOADED, -> fn olayId
 
     # Mask can be either an object or a parameter
     #   if the mask is a value, it is assumed that the value is a background-color
@@ -211,39 +213,38 @@ impl = (olayId) ->
         mask.click -> hideOlay olayId
         mask.hover _mouseenter, _mouseout
 
-    closeSel = (sel) -> ((jQuery "##{olayId}").on 'click', sel, -> hideOlay olayId) if sel
+    closeSel = (sel) -> (@olay.on 'click', sel, -> hideOlay olayId) if sel
 
-    removeOnClose = (bool) -> ((jQuery "##{olayId}").on EVENT.CLOSED, -> removeOlay olayId) if bool
+    removeOnClose = (bool) -> (@olay.on EVENT.CLOSED, -> removeOlay olayId) if bool
 
     _afterLoad = ->
-        olay = jQuery "##{olayId}"
-        olay.css prop, val for prop, val of {'position': 'absolute'}
+        @olay.css prop, val for prop, val of {'position': 'absolute'}
         zIndex = storeZIndex olayId, getMaxZIndex() + 1
 
-        olay.css('z-index', zIndex)
+        @olay.css('z-index', zIndex)
             .trigger(EVENT.LOADED, olayId)
             .on(EVENT.REMOVE, -> removeOlay olayId)
+            .on(EVENT.HIDE, -> hideOlay olayId)
 
         _COUNT += 1
 
     lazy = ({ev, cb, loaderCls}={opts}) ->
         return true unless ev and cb
-        olay = jQuery "##{olayId}"
 
-        process_cb = (ev, args...) ->
+        process_cb = (ev, args...) =>
             removeLoader()
             cb olayId, args...
 
             # At this stage overlay already loaded and we should call
             # `LOADED` event
-            olay.trigger EVENT.LOADED, olayId
+            @olay.trigger EVENT.LOADED, olayId
             totalRecalc()
 
             # Unbind recieved event.
-            olay.unbind ev
+            @olay.unbind ev
 
         attachLoader olayId, loaderCls
-        olay.on ev, process_cb
+        @olay.on ev, process_cb
 
     # Order is important.
     {_makeWrapper, onLoad, onClose, trigger, showOnLoad, mask,

@@ -15,7 +15,6 @@ getJNodeId = (jnode) ->
 EVENT =
     HIDE:      'olayHide'
     REMOVE:    'olayRemove'
-    RECTOP:    'olayRecalcTop'
 
     LOADED:    'olayLoaded'
     CLOSED:    'olayClosed'

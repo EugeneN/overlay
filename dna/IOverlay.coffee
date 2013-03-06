@@ -1,13 +1,5 @@
 {data_to_opts} = require 'libprotein'
 
-
-EVENT =
-    HIDE:      'olayHide'
-    SHOW:      'olayShow'
-
-    SHOWN:     'olayShown'
-    CLOSED:    'olayClosed'
-
 # Objects of the fully finished overlays.
 OVERLAYS = {}
 # Global state :( performance optimization.
@@ -62,13 +54,13 @@ recalc = (olayId) ->
     olay = jQuery "##{olayId}"
     left = (vpWidth - olay.outerWidth()) / 2
     olay.css('top', calcTop olayId).css('left', left)
+    hideOlay olayId if olay.is ':hidden'
 
 totalRecalc = -> recalc i for i of OVERLAYS
 
 hideOlay = (id) ->
     (jQuery document.body).css 'overflow', 'auto' if _COUNT is 1
     (getWrapper id).hide()
-    (jQuery "##{id}").trigger EVENT.CLOSED, id
     _COUNT -= 1
 
 showOlay = (id) ->
@@ -78,13 +70,12 @@ showOlay = (id) ->
 
     recalc id
     _COUNT += 1
-    olay.trigger EVENT.SHOWN, id
 
 
 impl = (olayId) ->
+    olay = jQuery "##{olayId}"
 
     _makeWrapper = ->
-        olay = (jQuery "##{olayId}").remove().clone()
         wrapper = (jQuery "<div>").append olay
         (jQuery document.body).append wrapper
 
@@ -116,17 +107,12 @@ impl = (olayId) ->
         mask.hover _mouseenter, _mouseout
 
     _afterLoad = ->
-        olay = jQuery "##{olayId}"
-
         mask.css 'z-index', getMaxZIndex()
         (getWrapper olayId).append storeMask olayId, mask
 
         olay.css prop, val for prop, val of {'position': 'absolute'}
         zIndex = storeZIndex olayId, getMaxZIndex() + 1
-
         olay.css('z-index', zIndex)
-            .on(EVENT.HIDE, -> hideOlay olayId)
-            .on(EVENT.SHOW, -> showOlay olayId)
 
 
     # Order is important.
@@ -150,32 +136,21 @@ module.exports =
             IOverlay: [
                 ['*cons*',  [], {concerns: {before: [getOpts]}}]
 
-                ['olayShown', ['f']]
-
-                ['overlay', ['content']]
                 ['hide',    []]
                 ['show',    []]
             ]
 
         implementations:
             IOverlay: (node, opts) ->
-                jnode = jQuery node
+                olay = jQuery node
+                olayId = olay.attr 'id'
 
-
-                olayShown: (f) -> jnode.bind EVENT.SHOWN, f
-
-
-                overlay: (content, cont) ->
-                    olayId = jnode.attr 'id'
-                    return showOlay olayId if olayStored olayId
-
-                    jnode.append content
+                unless olayStored olayId
                     storeOlayId olayId, opts
-
                     # Execute methods with the received options.
-                    (fn opts[name]) for name, fn of (impl olayId, content)
-                    showOlay olayId
+                    (fn opts[name]) for name, fn of (impl olayId)
 
-                hide: -> jnode.trigger EVENT.HIDE
 
-                show: -> jnode.trigger EVENT.SHOW
+                hide: -> hideOlay olayId
+
+                show: -> showOlay olayId
